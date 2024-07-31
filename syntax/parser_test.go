@@ -2566,6 +2566,10 @@ func TestParseRecoverErrors(t *testing.T) {
 		// 	wantRecoveredPos: 1,
 		// },
 		{
+			src:              "${incomp",
+			wantRecoveredPos: 1,
+		},
+		{
 			src:     "badsyntax)",
 			wantErr: true,
 		},
