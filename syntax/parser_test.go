@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"reflect"
 	"regexp"
 	"strings"
 	"sync"
@@ -2511,4 +2512,109 @@ func TestBackquotesPos(t *testing.T) {
 	// we end up keeping '\foo' between columns 3 and 7 (length 4).
 	qt.Assert(t, qt.Equals(lit.ValuePos.String(), "1:2"))
 	qt.Assert(t, qt.Equals(lit.ValueEnd.String(), "1:7"))
+}
+
+func TestParseRecoverErrors(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		src string
+
+		wantErr          bool
+		wantRecoveredPos int
+	}{
+		{src: "foo;"},
+		{src: "foo"},
+		{
+			src:              "'incomp",
+			wantRecoveredPos: 1,
+		},
+		{
+			src:              "foo; 'incomp",
+			wantRecoveredPos: 1,
+		},
+		{
+			src:              "(incomp",
+			wantRecoveredPos: 1,
+		},
+		{
+			src:              "(incomp; foo",
+			wantRecoveredPos: 1,
+		},
+		{
+			src:              "$(incomp",
+			wantRecoveredPos: 1,
+		},
+		// {
+		// 	src:              "((incomp",
+		// 	wantRecoveredPos: 1,
+		// },
+		{
+			src:              "if foo; then bar",
+			wantRecoveredPos: 1,
+		},
+		{
+			src:              `"incomp`,
+			wantRecoveredPos: 1,
+		},
+		{
+			src:              "`incomp",
+			wantRecoveredPos: 1,
+		},
+		// {
+		// 	src:              "incomp >",
+		// 	wantRecoveredPos: 1,
+		// },
+		{
+			src:     "badsyntax)",
+			wantErr: true,
+		},
+	}
+	p := NewParser(RecoverErrors(3))
+	for _, tc := range tests {
+		t.Run("", func(t *testing.T) {
+			r := strings.NewReader(tc.src)
+			f, err := p.Parse(r, "")
+			if tc.wantErr && err == nil {
+				t.Fatalf("Expected error in %q with RecoverErrors(3), found none", tc.src)
+			} else if !tc.wantErr && err != nil {
+				t.Fatalf("Unexpected error in %q with RecoverErrors(3): %v", tc.src, err)
+			}
+			gotRecoveredPos := countRecoveredPositions(reflect.ValueOf(f))
+			if gotRecoveredPos != tc.wantRecoveredPos {
+				t.Fatalf("want %d recovered positions in %q, got %d", tc.wantRecoveredPos, tc.src, gotRecoveredPos)
+			}
+
+		})
+	}
+}
+
+func countRecoveredPositions(x reflect.Value) int {
+	switch x.Kind() {
+	case reflect.Interface:
+		return countRecoveredPositions(x.Elem())
+	case reflect.Ptr:
+		if !x.IsNil() {
+			return countRecoveredPositions(x.Elem())
+		}
+	case reflect.Slice:
+		n := 0
+		for i := 0; i < x.Len(); i++ {
+			n += countRecoveredPositions(x.Index(i))
+		}
+		return n
+	case reflect.Struct:
+		if pos, ok := x.Interface().(Pos); ok {
+			if pos.IsRecovered() {
+				return 1
+			}
+			return 0
+		}
+		n := 0
+		for i := 0; i < x.NumField(); i++ {
+			n += countRecoveredPositions(x.Field(i))
+		}
+		return n
+	}
+	return 0
 }
