@@ -2872,7 +2872,7 @@ done <<< 2`,
 		"linecontinuation\n",
 	},
 	{
-		"echo a > f; while read a; do echo $a; done < f",
+		"echo x > f; while read a; do echo $a; done < f",
 		"x\n",
 	},
 	{
