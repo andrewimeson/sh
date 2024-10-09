@@ -2872,6 +2872,10 @@ done <<< 2`,
 		"linecontinuation\n",
 	},
 	{
+		"echo a > f; while read a; do echo $a; done < f",
+		"x\n",
+	},
+	{
 		`read -r a <<< '\\'; echo "$a"`,
 		"\\\\\n",
 	},
